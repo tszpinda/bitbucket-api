@@ -1,12 +1,20 @@
-package main
+package bapi
 
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"text/template"
+	//"io/ioutil"
+	"fmt"
+	"net/http/httputil"
+)
+
+const (
+	debugOn = false
 )
 
 type BClient struct {
@@ -15,21 +23,6 @@ type BClient struct {
 	Repo           string
 	Username       string
 	accessToken    *accessToken
-}
-
-func main() {
-	client := BClient{
-		ConsumerKey:    "MSxtPGXknnpg9BEkpG",
-		ConsumerSecret: "wth45aqgcEVD3JgTxHCrJqucwUF9KXEL",
-		Repo:           "funny",
-		Username:       "tszpinda"}
-	client.Authenticate()
-
-	list := client.PullRequests()
-
-	for _, v := range list.PullRequests {
-		fmt.Printf("\n%+v\n", v)
-	}
 }
 
 func (c *BClient) Authenticate() {
@@ -41,89 +34,82 @@ func (c *BClient) Authenticate() {
 	c.accessToken = accessToken
 }
 
-func (c *BClient) PullRequests() *PullRequests {
-	data := PullRequests{}
-	c.get("https://api.bitbucket.org/2.0/repositories/{{.Username}}/{{.Repo}}/pullrequests", &data)
+func (c *BClient) PullRequests(status PullRequestStatus) *PullRequestList {
+	data := PullRequestList{}
+	urlParams := c.defaultUrlParams()
+	urlParams["Status"] = status.String()
+	if status != PullRequestAll {
+		urlParams["FilterByStatus"] = true
+	}
+
+	c.get("https://api.bitbucket.org/2.0/repositories/{{.Username}}/{{.Repo}}/pullrequests{{if .FilterByStatus}}?state={{.Status}}{{end}}", &data, urlParams)
+
 	return &data
 }
 
-func (c *BClient) get(url string, data interface{}) error {
+func (c *BClient) PullRequest(id int) *PullRequest {
+	data := PullRequest{}
+	urlParams := c.defaultUrlParams()
+	urlParams["Id"] = strconv.Itoa(id)
+	c.get("https://api.bitbucket.org/2.0/repositories/{{.Username}}/{{.Repo}}/pullrequests/{{.Id}}", &data, &urlParams)
+
+	return &data
+}
+
+func (c *BClient) defaultUrlParams() (params map[string]interface{}) {
+
+	urlParams := make(map[string]interface{})
+	urlParams["Username"] = c.Username
+	urlParams["Repo"] = c.Repo
+	return urlParams
+}
+
+func getUrl(url string, urlData interface{}) string {
 	tmpl, err := template.New("url").Parse(url)
 	if err != nil {
 		panic(err)
 	}
 
 	var doc bytes.Buffer
-	err = tmpl.Execute(&doc, c)
+	err = tmpl.Execute(&doc, urlData)
 	if err != nil {
 		panic(err)
 	}
+	return doc.String()
+}
 
-	rUrl := doc.String()
+func (c *BClient) get(url string, data, urlData interface{}) error {
+	rUrl := getUrl(url, urlData)
 	req, _ := http.NewRequest("GET", rUrl, nil)
 
 	signDataRequest(req, c.accessToken, c.ConsumerKey, c.ConsumerSecret)
-
-	// make the request
-	resp, err := http.DefaultClient.Do(req)
-	defer resp.Body.Close()
-	if err != nil {
-		log.Fatal(err)
+	if debugOn {
+		debug(httputil.DumpRequestOut(req, true))
 	}
 
-	err = json.NewDecoder(resp.Body).Decode(data)
-	return err
+	resp, err := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+
+	if debugOn {
+		debug(httputil.DumpResponse(resp, true))
+	}
+
+	log.Println("response code:", resp.StatusCode)
+	if resp.StatusCode != 200 {
+		log.Println(resp.Status)
+		return errors.New("Http Status != 200")
+	}
+
+	if err != nil {
+		return err
+	}
+	return json.NewDecoder(resp.Body).Decode(data)
 }
 
-type PullRequests struct {
-	Pagelen      int           `json:"pagelen"`
-	Page         int           `json:"page"`
-	Size         int           `json:"size"`
-	PullRequests []PullRequest `json:"values"`
-}
-
-type PullRequest struct {
-	Description       string      `json:"description"`
-	Title             string      `json:"title"`
-	Links             Links       `json:"links"`
-	CloseSourceBranch bool        `json:"close_source_branch"`
-	MergeCommit       string      `json:"merge_commit"`
-	Reason            string      `json:"reason"`
-	ClosedBy          string      `json:"closed_by"`
-	Source            Source      `json:"source"`
-	State             string      `json:"state"`
-	Author            Author      `json:"author"`
-	CreatedOn         string      `json:"created_on"`
-	UpdatedOn         string      `json:"updated_on"`
-	Type              string      `json:"type"`
-	Id                string      `json:"id"`
-	Destination       Destination `json:"destination"`
-}
-
-type Links struct {
-	Decline  Link `json:"decline"`
-	Commits  Link `json:"commits"`
-	Self     Link `json:"self"`
-	Comments Link `json:"comments"`
-	Merge    Link `json:"merge"`
-	Html     Link `json:"html"`
-	Activity Link `json:"activity"`
-	Diff     Link `json:"diff"`
-	Approve  Link `json:"approve"`
-}
-
-type Link struct {
-	Href string `json:"href"`
-}
-type Author struct {
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
-	Type        string `json:"type"`
-	UUID        string `json:"uuid"`
-}
-
-type Destination struct {
-}
-
-type Source struct {
+func debug(data []byte, err error) {
+	if err == nil {
+		fmt.Printf("%s\n\n", data)
+	} else {
+		log.Fatalf("%s\n\n", err)
+	}
 }

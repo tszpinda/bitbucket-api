@@ -1,9 +1,10 @@
-package main
+package bapi
 
 import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"encoding/json"
 )
 
 type requestToken struct {
@@ -34,7 +34,7 @@ func createAccessToken(client *BClient) (*accessToken, error) {
 	if accessToken != nil {
 		return accessToken, nil
 	}
-	
+
 	accessToken, err := auth(client.ConsumerKey, client.ConsumerSecret)
 	if err != nil {
 		return nil, err
@@ -43,13 +43,12 @@ func createAccessToken(client *BClient) (*accessToken, error) {
 	return accessToken, nil
 }
 
-
 func cacheAccessToken(token *accessToken) {
 	tokenByte, _ := json.MarshalIndent(token, "", "  ")
 	err := ioutil.WriteFile("/tmp/token", tokenByte, 0644)
 	if err != nil {
 		panic(err)
-	}   
+	}
 }
 func readCachedAccessToken() *accessToken {
 	tokenBytes, err := ioutil.ReadFile("/tmp/token")
@@ -59,8 +58,7 @@ func readCachedAccessToken() *accessToken {
 	token := accessToken{}
 	json.Unmarshal(tokenBytes, &token)
 	return &token
-}  
-
+}
 
 func signDataRequest(req *http.Request, t *accessToken, consumerKey, consumerSecret string) {
 	params := map[string]string{}
@@ -69,12 +67,13 @@ func signDataRequest(req *http.Request, t *accessToken, consumerKey, consumerSec
 	params["oauth_signature_method"] = "HMAC-SHA1"
 	params["oauth_timestamp"] = timestamp()
 	params["oauth_version"] = "1.0"
-	params["oauth_callback"] = "oob"
 	params["oauth_token"] = t.OAuthToken
-
+	
 	key := escape(consumerSecret) + "&" + escape(t.OAuthTokenSecret)
 	base := requestString(req.Method, req.URL.String(), params)
+
 	params["oauth_signature"] = sign(base, key)
+	
 	req.Header.Add("Authorization", authorizationString(params))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 }
@@ -160,11 +159,13 @@ func signAuthorizeToken(req *http.Request, t *requestToken, consumerKey, consume
 	params["oauth_version"] = "1.0"
 	params["oauth_callback"] = "oob"
 	params["oauth_token"] = t.token
-
+	
 	key := escape(consumerSecret) + "&" + escape(t.secret)
 	base := requestString(req.Method, req.URL.String(), params)
+	
 	params["oauth_signature"] = sign(base, key)
-	req.Header.Add("Authorization", authorizationString(params))
+	
+	req.Header.Add("Authorization", fmt.Sprintf("OAuth %s", authorizationString(params)))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 }
 
@@ -218,7 +219,7 @@ func signRequest(req *http.Request, consumerKey, consumerSecret string) {
 	params["oauth_timestamp"] = timestamp()
 	params["oauth_version"] = "1.0"
 	params["oauth_callback"] = "oob" //"http://localhost:8080/auth/bitbucket"
-
+	
 	//we'll need to sign any form values
 	if req.Form != nil {
 		for k, _ := range req.Form {
@@ -234,7 +235,8 @@ func signRequest(req *http.Request, consumerKey, consumerSecret string) {
 	key := escape(consumerSecret) + "&" + escape("")
 	base := requestString(req.Method, req.URL.String(), params)
 	params["oauth_signature"] = sign(base, key)
-	req.Header.Add("Authorization", authorizationString(params))
+	
+	req.Header.Add("Authorization", fmt.Sprintf("OAuth %s", authorizationString(params)))
 }
 
 func parserequestToken(reader io.ReadCloser) (*requestToken, error) {
@@ -297,19 +299,24 @@ func authorizationString(params map[string]string) string {
 
 		// we previously encoded all params (url params, form data & oauth params)
 		// but for the authorization string we should only encode the oauth params
-		if !strings.HasPrefix(key, "oauth_") {
+		fmt.Println(key)
+		if !strings.HasPrefix(key, "oauth_") && key != "realm" {
 			continue
 		}
 
 		if cnt > 0 {
 			str += ","
 		}
-
-		str += fmt.Sprintf("%s=%q", key, escape(params[key]))
+		
+		if key == "oauth_signature" || key == "realm" {
+			str += fmt.Sprintf("%s=%q", key, params[key])
+		} else {
+			str += fmt.Sprintf("%s=%q", key, escape(params[key]))
+		}
 		cnt++
 	}
 
-	return fmt.Sprintf("OAuth %s", str)
+	return str
 }
 
 // Nonce generator, seeded with current time
