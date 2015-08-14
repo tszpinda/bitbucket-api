@@ -11,12 +11,11 @@ func (status PullRequestStatus) String() string {
 	case PullRequestMerged:
 		return "MERGED"
 	}
-	return "ALL"
+	panic("invalid status")
 }
 
 const (
-	PullRequestAll PullRequestStatus = iota
-	PullRequestOpen
+	PullRequestOpen PullRequestStatus = iota
 	PullRequestMerged
 	PullRequestDeclined
 )

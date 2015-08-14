@@ -10,14 +10,6 @@ func TestFindPullRequests(t *testing.T) {
 	Convey("Given authenticated client to bitbucket repository", t, func() {
 		client := authenticatedClient()
 
-		Convey("When status is 'PullRequestAll'", func() {
-			allRequests := client.PullRequests(PullRequestAll)
-
-			Convey("Number of pull requests should be 2", func() {
-				So(len(allRequests.PullRequests), ShouldEqual, 2)
-			})
-		})
-
 		Convey("When status is 'PullRequestOpen'", func() {
 			openRequests := client.PullRequests(PullRequestOpen)
 

@@ -38,12 +38,7 @@ func (c *BClient) PullRequests(status PullRequestStatus) *PullRequestList {
 	data := PullRequestList{}
 	urlParams := c.defaultUrlParams()
 	urlParams["Status"] = status.String()
-	if status != PullRequestAll {
-		urlParams["FilterByStatus"] = true
-	}
-
-	c.get("https://api.bitbucket.org/2.0/repositories/{{.Username}}/{{.Repo}}/pullrequests{{if .FilterByStatus}}?state={{.Status}}{{end}}", &data, urlParams)
-
+	c.get("https://api.bitbucket.org/2.0/repositories/{{.Username}}/{{.Repo}}/pullrequests?state={{.Status}}", &data, urlParams)
 	return &data
 }
 
@@ -52,12 +47,10 @@ func (c *BClient) PullRequest(id int) *PullRequest {
 	urlParams := c.defaultUrlParams()
 	urlParams["Id"] = strconv.Itoa(id)
 	c.get("https://api.bitbucket.org/2.0/repositories/{{.Username}}/{{.Repo}}/pullrequests/{{.Id}}", &data, &urlParams)
-
 	return &data
 }
 
 func (c *BClient) defaultUrlParams() (params map[string]interface{}) {
-
 	urlParams := make(map[string]interface{})
 	urlParams["Username"] = c.Username
 	urlParams["Repo"] = c.Repo
@@ -92,11 +85,11 @@ func (c *BClient) get(url string, data, urlData interface{}) error {
 
 	if debugOn {
 		debug(httputil.DumpResponse(resp, true))
+		log.Println("response code:", resp.StatusCode)
 	}
 
-	log.Println("response code:", resp.StatusCode)
 	if resp.StatusCode != 200 {
-		log.Println(resp.Status)
+		log.Println("response code:", resp.StatusCode, resp.Status)
 		return errors.New("Http Status != 200")
 	}
 

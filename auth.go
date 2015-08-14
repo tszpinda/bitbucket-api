@@ -299,8 +299,7 @@ func authorizationString(params map[string]string) string {
 
 		// we previously encoded all params (url params, form data & oauth params)
 		// but for the authorization string we should only encode the oauth params
-		fmt.Println(key)
-		if !strings.HasPrefix(key, "oauth_") && key != "realm" {
+		if !strings.HasPrefix(key, "oauth_") {
 			continue
 		}
 
@@ -308,11 +307,7 @@ func authorizationString(params map[string]string) string {
 			str += ","
 		}
 		
-		if key == "oauth_signature" || key == "realm" {
-			str += fmt.Sprintf("%s=%q", key, params[key])
-		} else {
-			str += fmt.Sprintf("%s=%q", key, escape(params[key]))
-		}
+		str += fmt.Sprintf("%s=%q", key, escape(params[key]))
 		cnt++
 	}
 
